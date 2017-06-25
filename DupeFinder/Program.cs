@@ -11,14 +11,32 @@ namespace DupeFinder
 {
     internal class Program
     {
+        private static readonly Regex Regex = new Regex(@"\\(?<name>[^\\]*?)(?<dupe>\s\(\d\))?\.");
+
         private static void Main(string[] args)
         {
-            var regex = new Regex(@"\\(?<name>[^\\]*?)(?<dupe>\s\(\d\))?\.");
+            var path = @"D:\Users\Ally\Pictures\Photos\";
+            CheckFolderForDupes(path);
+            Console.ReadLine();
+        }
 
-            var enumerable = Directory.GetFiles(@"D:\Users\Ally\Pictures\Photos\2017-05")
+        private static void CheckFolderForDupes(string path)
+        {
+            Console.WriteLine("Checking "+path);
+            CheckForFileDupes(path);
+
+            foreach (var subDir in Directory.GetDirectories(path))
+            {
+                CheckFolderForDupes(subDir);
+            }
+        }
+
+        private static void CheckForFileDupes(string path)
+        {
+            var enumerable = Directory.GetFiles(path)
                 .Select(f =>
                     {
-                        var match = regex.Match(f);
+                        var match = Regex.Match(f);
                         if (match.Success)
                         {
                             var matchGroup = match.Groups["name"].Value;
@@ -43,14 +61,14 @@ namespace DupeFinder
                     {
                         var right = grp.ElementAt(j);
                         string format;
-                        if (right.IsDuplicateOf(left)) format = $"{left.FullName} is a dupe of {right.FullName}";
+                        if (right.IsDuplicateOf(left))
+                            format = $"{left.FullName} is a dupe of {right.FullName}";
                         else
                             format = $"{left.FullName} is NOT a dupe of {right.FullName}";
                         Console.WriteLine(format);
                     }
                 }
             }
-            Console.ReadLine();
         }
 
         private class FileMatch

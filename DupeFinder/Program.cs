@@ -1,20 +1,15 @@
 ﻿using System;
-using System.Drawing;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Security.AccessControl;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using ExifLib;
-using XperiCode.JpegMetadata;
+using Microsoft.WindowsAPICodePack.Shell;
+using Microsoft.WindowsAPICodePack.Shell.PropertySystem;
 
 namespace DupeFinder
 {
-    class Program
+    internal class Program
     {
         private static void Main(string[] args)
         {
@@ -31,101 +26,84 @@ namespace DupeFinder
                         }
                         return new FileMatch(f, f);
                     }
-                ).ToLookup(fm => fm.MatchName + fm.Info.Extension)
+                ).ToLookup(fm => fm.MatchName + fm.Extension)
                 .Where(grp => grp.Count() > 1)
                 .ToList();
 
             foreach (var grp in enumerable)
             {
-                List<FileMatch> same = new List<FileMatch>();
-                List<FileMatch> different = new List<FileMatch>();
+                var same = new List<FileMatch>();
+                var different = new List<FileMatch>();
                 var grpKey = grp.Key;
-                for (int i = 0; i < grp.Count(); i++)
+                for (var i = 0; i < grp.Count(); i++)
                 {
                     var left = grp.ElementAt(i);
-                    var leftImg = Image.FromFile(left.FullName);
 
-                    for (int j = i + 1; j < grp.Count(); j++)
+                    for (var j = i + 1; j < grp.Count(); j++)
                     {
                         var right = grp.ElementAt(j);
-                        if (left.Info.Length == right.Info.Length &&
-                            left.Info.CreationTimeUtc == right.Info.CreationTimeUtc)
-                        {
-                            switch (left.Info.Extension.ToLower())
-                            {
-                                case ".jpg":
-                                case ".jpeg":
-                                case ".gif":
-                                case ".png":
-                                    
-                                    var rightImg = Image.FromFile(right.FullName);
-
-                                    if (leftImg.PhysicalDimension == rightImg.PhysicalDimension)
-                                    {
-                                        Console.WriteLine($"{left.FullName} is a dupe of {right.FullName}");
-                                    }
-                                    else
-                                    {
-                                        //Console.WriteLine($"{left.FullName} is NOT a dupe of {right.FullName}");
-                                    }
-                                    break;
-                                default:
-                                    Console.WriteLine($"{left.FullName} is a dupe of {right.FullName}");
-                                    break;
-                            }
-                        }else
-                        {
-                            Console.WriteLine($"{left.FullName} is NOT a dupe of {right.FullName}");
-                        }
+                        string format;
+                        if (right.IsDuplicateOf(left)) format = $"{left.FullName} is a dupe of {right.FullName}";
+                        else
+                            format = $"{left.FullName} is NOT a dupe of {right.FullName}";
+                        Console.WriteLine(format);
                     }
                 }
             }
             Console.ReadLine();
         }
 
-        public static bool Same<T>(ExifTags tags, ExifReader left, ExifReader right)
-        {
-            T leftVal;
-            var leftExists = left.GetTagValue<T>(tags, out leftVal);
-            T rightVal;
-            var rightExists = left.GetTagValue<T>(tags, out rightVal);
-            if (!leftExists && !rightExists) return true;
-
-            if (leftExists != rightExists) return false;
-
-            return leftVal.Equals(rightVal);
-
-        }
-
         private class FileMatch
         {
-            private Image _image;
-
             public FileMatch(string fullName, string matchName)
             {
                 FullName = fullName;
                 MatchName = matchName;
-                Info = new FileInfo(FullName);
+                var info = ShellFile.FromFilePath(FullName);
+                var systemProps = info.Properties.System;
+                Extension = systemProps.FileExtension.Value.ToLower();
 
-                switch (Info.Extension.ToLower())
+                var imageProps = systemProps.Image;
+                var vidProps = systemProps.Video;
+
+                TestProps = new Dictionary<string, string>
                 {
-                    case ".jpg":
-                    case ".jpeg":
-                    case ".gif":
-                    case ".png":
-                        ImageSize = Image.FromFile(FullName).PhysicalDimension;
-                        break;
-                }
+                    ["DateCreated"] = systemProps.DateCreated?.Value?.ToString("O"),
+                    ["Size"] = systemProps.Size?.Value?.ToString(),
+                    ["ImageHorizontalSize"] = imageProps?.HorizontalSize?.Value?.ToString(),
+                    ["ImageVerticalSize"] = imageProps?.VerticalSize?.Value?.ToString(),
+                    ["VideoCompression"] = vidProps?.Compression?.Value,
+                    ["VideoFrameHeight"] = vidProps?.FrameHeight?.Value?.ToString(),
+                    ["VideoFrameWidth"] = vidProps?.FrameWidth?.Value?.ToString(),
+                    ["VideoFrameRate"] = vidProps?.FrameRate?.Value?.ToString(),
+                };
             }
 
+            public string Extension { get; }
+
+            public Dictionary<string, string> TestProps { get; }
+
             public string FullName { get; }
-            public FileInfo Info { get; }
-
-            public SizeF ImageSize { get; }
-
             public string MatchName { get; }
             public bool IsSuffixed => FullName != MatchName;
-            
+
+            public bool IsDuplicateOf(FileMatch other)
+            {
+                bool all = true;
+                foreach (var kvp in TestProps)
+                {
+                    var thisTestProp = kvp.Value;
+                    var otherTestProp = other.TestProps[kvp.Key];
+                    if (otherTestProp != thisTestProp)
+                    {
+                        all = false;
+                        break;
+                    }
+                }
+                return string.Equals(Extension, other.Extension) 
+                    && string.Equals(MatchName.ToLower(), other.MatchName.ToLower()) 
+                    && all;
+            }
         }
     }
 }

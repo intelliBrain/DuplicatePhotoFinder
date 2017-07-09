@@ -147,15 +147,21 @@ namespace DupeFinder
 
             private bool AllTestPropsMatch(FileMatch other)
             {
+                if (TestProps.Count != other.TestProps.Count)
+                    return false;
+
                 bool allTestPropsMatch = true;
                 foreach (var kvp in TestProps)
                 {
                     var thisTestProp = kvp.Value;
-                    var otherTestProp = other.TestProps[kvp.Key];
-                    if (otherTestProp != thisTestProp)
+                    if (other.TestProps.TryGetValue(kvp.Key, out string otherTestProp))
                     {
-                        allTestPropsMatch = false;
-                        break;
+                        if (otherTestProp != thisTestProp)
+                            return false;
+                    }
+                    else
+                    {
+                        return false;
                     }
                 }
                 return allTestPropsMatch;

@@ -9,13 +9,13 @@ using Microsoft.WindowsAPICodePack.Shell.PropertySystem;
 
 namespace DupeFinder
 {
-    internal class Program
+    public class Program
     {
-        private static readonly Regex Regex = new Regex(@"\\(?<name>[^\\]*?)(?<dupe>\s\(\d\))?\.");
+        private static readonly Regex Regex = new Regex(@"\\(?<name>[^\\]*?)(?<dupe>\s\((?<number>\d)\))?\.");
 
         private static void Main(string[] args)
         {
-            var path = @"D:\Users\Ally\Pictures\Photos\";
+            var path = @"D:\Users\Ally\Pictures\Photos\2017-05";
             CheckFolderForDupes(path);
             Console.ReadLine();
         }
@@ -40,9 +40,13 @@ namespace DupeFinder
                         if (match.Success)
                         {
                             var matchGroup = match.Groups["name"].Value;
-                            return new FileMatch(f, matchGroup);
+                            var copyNumberStr = match.Groups["number"]?.Value;
+                            var copyNumber = string.IsNullOrEmpty(copyNumberStr)
+                                ? 0
+                                : Convert.ToInt32(copyNumberStr);
+                            return CreateFileMatch(f, matchGroup, copyNumber);
                         }
-                        return new FileMatch(f, f);
+                        return CreateFileMatch(f);
                     }
                 ).ToLookup(fm => fm.MatchName + fm.Extension)
                 .Where(grp => grp.Count() > 1)
@@ -50,77 +54,111 @@ namespace DupeFinder
 
             foreach (var grp in enumerable)
             {
-                var same = new List<FileMatch>();
-                var different = new List<FileMatch>();
-                var grpKey = grp.Key;
-                for (var i = 0; i < grp.Count(); i++)
-                {
-                    var left = grp.ElementAt(i);
+                var dupes = FindDupes(grp);
 
-                    for (var j = i + 1; j < grp.Count(); j++)
-                    {
-                        var right = grp.ElementAt(j);
-                        string format;
-                        if (right.IsDuplicateOf(left))
-                            format = $"{left.FullName} is a dupe of {right.FullName}";
-                        else
-                            format = $"{left.FullName} is NOT a dupe of {right.FullName}";
-                        Console.WriteLine(format);
-                    }
-                }
             }
         }
 
-        private class FileMatch
+        private static FileMatch CreateFileMatch(string f, string matchGroup = null, int? copyNumber =null)
         {
-            public FileMatch(string fullName, string matchName)
+            var info = ShellFile.FromFilePath(f);
+            var systemProps = info.Properties.System;
+            var extension = systemProps.FileExtension.Value.ToLower();
+
+            var imageProps = systemProps.Image;
+            var vidProps = systemProps.Video;
+
+            var testProps = new Dictionary<string, string>
+            {
+                ["DateCreated"] = systemProps.DateCreated?.Value?.ToString("O"),
+                ["Size"] = systemProps.Size?.Value?.ToString(),
+                ["ImageHorizontalSize"] = imageProps?.HorizontalSize?.Value?.ToString(),
+                ["ImageVerticalSize"] = imageProps?.VerticalSize?.Value?.ToString(),
+                ["VideoCompression"] = vidProps?.Compression?.Value,
+                ["VideoFrameHeight"] = vidProps?.FrameHeight?.Value?.ToString(),
+                ["VideoFrameWidth"] = vidProps?.FrameWidth?.Value?.ToString(),
+                ["VideoFrameRate"] = vidProps?.FrameRate?.Value?.ToString(),
+            };
+
+            return new FileMatch(f, matchGroup ?? f, copyNumber ?? 0, extension, testProps);
+        }
+
+        public static List<FileMatch> FindDupes(IEnumerable<FileMatch> files)
+        {
+            var dupes = new List<FileMatch>();
+            var fileMatches = files.OrderBy(f => f.CopyNumber).ToArray();
+
+            for (var i = 0; i < fileMatches.Length; i++)
+            {
+                var left = fileMatches[i];
+
+                for (var j = i + 1; j < fileMatches.Length; j++)
+                {
+                    var right = fileMatches[j];
+                    if (left.FullName == right.FullName || dupes.Contains(right))
+                    {
+                        continue;
+                    }
+
+                    string format;
+                    if (right.IsDuplicateOf(left))
+                    {
+                        format = $"{left.FullName} is a dupe of {right.FullName}";
+                        dupes.Add(right);
+                    }
+                    else
+                    {
+                        format = $"{left.FullName} is NOT a dupe of {right.FullName}";
+                    }
+                    Console.WriteLine(format);
+                }
+            }
+            return dupes;
+        }
+
+        public class FileMatch
+        {
+            public FileMatch(string fullName, string matchName, int copyNumber, string extension, Dictionary<string, string> testProps)
             {
                 FullName = fullName;
                 MatchName = matchName;
-                var info = ShellFile.FromFilePath(FullName);
-                var systemProps = info.Properties.System;
-                Extension = systemProps.FileExtension.Value.ToLower();
-
-                var imageProps = systemProps.Image;
-                var vidProps = systemProps.Video;
-
-                TestProps = new Dictionary<string, string>
-                {
-                    ["DateCreated"] = systemProps.DateCreated?.Value?.ToString("O"),
-                    ["Size"] = systemProps.Size?.Value?.ToString(),
-                    ["ImageHorizontalSize"] = imageProps?.HorizontalSize?.Value?.ToString(),
-                    ["ImageVerticalSize"] = imageProps?.VerticalSize?.Value?.ToString(),
-                    ["VideoCompression"] = vidProps?.Compression?.Value,
-                    ["VideoFrameHeight"] = vidProps?.FrameHeight?.Value?.ToString(),
-                    ["VideoFrameWidth"] = vidProps?.FrameWidth?.Value?.ToString(),
-                    ["VideoFrameRate"] = vidProps?.FrameRate?.Value?.ToString(),
-                };
+                CopyNumber = copyNumber;
+                Extension = extension;
+               
+                TestProps = testProps;
             }
 
             public string Extension { get; }
-
             public Dictionary<string, string> TestProps { get; }
-
             public string FullName { get; }
             public string MatchName { get; }
-            public bool IsSuffixed => FullName != MatchName;
+            public int CopyNumber { get; }
 
             public bool IsDuplicateOf(FileMatch other)
             {
-                bool all = true;
+                if (FullName == other.FullName)
+                    return false;
+
+                return string.Equals(Extension, other.Extension) 
+                    && string.Equals(MatchName.ToLower(), other.MatchName.ToLower()) 
+                    && CopyNumber != other.CopyNumber
+                    && AllTestPropsMatch(other);
+            }
+
+            private bool AllTestPropsMatch(FileMatch other)
+            {
+                bool allTestPropsMatch = true;
                 foreach (var kvp in TestProps)
                 {
                     var thisTestProp = kvp.Value;
                     var otherTestProp = other.TestProps[kvp.Key];
                     if (otherTestProp != thisTestProp)
                     {
-                        all = false;
+                        allTestPropsMatch = false;
                         break;
                     }
                 }
-                return string.Equals(Extension, other.Extension) 
-                    && string.Equals(MatchName.ToLower(), other.MatchName.ToLower()) 
-                    && all;
+                return allTestPropsMatch;
             }
         }
     }

@@ -25,9 +25,9 @@ namespace DupeFinder
         private static void CheckForFileDupes(string path)
         {
             var enumerable = Directory.GetFiles(path)
-                .Select<string, FileMatch>(f =>
+                .Select(f =>
                     {
-                        var match = System.Text.RegularExpressions.Regex.Match(f);
+                        var match = Regex.Match(f);
                         if (match.Success)
                         {
                             var matchGroup = match.Groups["name"].Value;

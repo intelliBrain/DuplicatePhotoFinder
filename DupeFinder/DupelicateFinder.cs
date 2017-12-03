@@ -46,7 +46,6 @@ namespace DupeFinder
             foreach (var grp in enumerable)
             {
                 var dupes = FindDupes(grp);
-
             }
         }
 
@@ -94,12 +93,12 @@ namespace DupeFinder
                     string format;
                     if (right.IsDuplicateOf(left))
                     {
-                        format = $"{left.FullName} is a dupe of {right.FullName}";
+                        format = $"{right.FullName} is a dupe of {left.FullName}";
                         dupes.Add(right);
                     }
                     else
                     {
-                        format = $"{left.FullName} is NOT a dupe of {right.FullName}";
+                        format = $"{right.FullName} is NOT a dupe of {left.FullName}";
                     }
                     Console.WriteLine(format);
                 }

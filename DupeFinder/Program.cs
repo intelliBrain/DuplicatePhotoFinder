@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 
 namespace DupeFinder
 {
@@ -6,8 +7,14 @@ namespace DupeFinder
     {
         private static void Main(string[] args)
         {
-            var path = @"D:\Users\Ally\Pictures\Photos\2017-05";
-            DupelicateFinder.CheckFolderForDupes(path);
+            var path = @"D:\Users\Ally\Pictures\Photos\";
+            var duplicateFolder = Path.Combine(path, "Duplicates");
+            if (!Directory.Exists(duplicateFolder))
+            {
+                Directory.CreateDirectory(duplicateFolder);
+            }
+
+            DuplicateFinder.CheckFolderForDupes(path, duplicateFolder);
             Console.ReadLine();
         }
     }

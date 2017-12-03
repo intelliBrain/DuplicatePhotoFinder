@@ -7,23 +7,26 @@ using Microsoft.WindowsAPICodePack.Shell;
 
 namespace DupeFinder
 {
-    public class DupelicateFinder
+    public class DuplicateFinder
     {
         private static readonly Regex Regex = new Regex(@"\\(?<name>[^\\]*?)(?<dupe>\s\((?<number>\d)\))?\.");
 
-        public static void CheckFolderForDupes(string path)
+        public static void CheckFolderForDupes(string path, string duplicateFolder)
         {
             Console.WriteLine("Checking "+path);
-            CheckForFileDupes(path);
+
+            CheckForFileDupes(path, duplicateFolder);
 
             foreach (var subDir in Directory.GetDirectories(path))
             {
-                CheckFolderForDupes(subDir);
+                CheckFolderForDupes(subDir, duplicateFolder);
             }
         }
 
-        private static void CheckForFileDupes(string path)
+        private static void CheckForFileDupes(string path, string baseDuplicateOutputPath)
         {
+
+
             var enumerable = Directory.GetFiles(path)
                 .Select(f =>
                     {
@@ -43,9 +46,20 @@ namespace DupeFinder
                 .Where(grp => grp.Count() > 1)
                 .ToList();
 
+            var parentFolder = path.Split('\\').Last();
             foreach (var grp in enumerable)
             {
                 var dupes = FindDupes(grp);
+                var duplicateOutFolder = Path.Combine(baseDuplicateOutputPath, parentFolder);
+                if (dupes.Any() && !Directory.Exists(duplicateOutFolder))
+                {
+                    Directory.CreateDirectory(duplicateOutFolder);
+                }
+
+                foreach (var fileMatch in dupes)
+                {
+                    File.Move(fileMatch.FullName, Path.Combine(duplicateOutFolder, Path.GetFileName(fileMatch.FullName)));
+                }
             }
         }
 
